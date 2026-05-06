@@ -3,12 +3,13 @@ package com.github.calhanwynters.domain.valueobjects;
 import com.github.calhanwynters.domain.exceptions.DomainRuleViolationException;
 import com.github.calhanwynters.domain.validationchecks.DomainGuard;
 
+import java.util.function.Predicate;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
  * Hardened Value Object for product care instructions.
- * Aligned with DomainGuard for 2026 Edition (Java 21/25).
+ * Aligned with DomainGuard for 2026 Edition.
  */
 public record CareInstruction(String instructions) {
 
@@ -16,12 +17,7 @@ public record CareInstruction(String instructions) {
     private static final int MAX_LENGTH = 500;
     private static final double SAFETY_FACTOR = 1.5;
 
-    /**
-     * The "Null Object" constant.
-     * Satisfies: NotBlank, MinLength (5), and Semantic Style (Hyphen).
-     */
     public static final CareInstruction NONE = new CareInstruction("- N/A");
-
 
     // Prefix Patterns for Semantic Consistency
     private static final Pattern HYPHEN_PREFIX = Pattern.compile("^-");
@@ -29,46 +25,46 @@ public record CareInstruction(String instructions) {
     private static final Pattern BULLET_DOT_PREFIX = Pattern.compile("^•");
     private static final Pattern NUMBER_PREFIX = Pattern.compile("^(?:[1-9]|1[0-5])\\.");
 
-    /**
-     * Unicode-aware content whitelist (Degree sign, symbols, and punctuation included).
-     */
+    // Unicode-aware content whitelist (Lexical/Syntax)
     private static final Pattern VALID_CONTENT_PATTERN =
             Pattern.compile("^(?U)[\\p{L}\\p{N} °.,:!\\n\\r*•()\\[\\]\\-?]+$");
 
+    // Simple Lexical Filter (Ideally injected via a service, but defined here for invariant safety)
+    private static final Predicate<String> PROFANITY_FILTER =
+            s -> s.toLowerCase().contains("badword"); // Placeholder for your filter logic
+
     /**
-     * Compact Constructor enforcing semantic list styles and lexical safety.
+     * Compact Constructor enforcing hierarchical domain guards.
      */
     public CareInstruction {
-        // 1. Existence (Throws VAL-010)
+        // 1. EXISTENCE
         DomainGuard.notBlank(instructions, "Care Instructions");
 
-        // 2. Normalization
+        // 2. NORMALIZATION (Pre-validation prep)
         instructions = instructions.replace("\r\n", "\n").replace("\r", "\n").strip();
 
-        // 3. DoS Mitigation & Size (Throws VAL-014 and VAL-002)
+        // 3. SIZE & DOS MITIGATION
         DomainGuard.ensure(
                 instructions.length() <= (MAX_LENGTH * SAFETY_FACTOR),
                 "Input raw data exceeds safety buffer.",
                 "VAL-014", "DOS_PREVENTION"
         );
-
         DomainGuard.lengthBetween(instructions, MIN_LENGTH, MAX_LENGTH, "Care Instructions");
 
-        // 4. Lexical Content (Throws VAL-004)
+        // 4. LEXICAL: Content Integrity (New)
+        DomainGuard.noProfanity(instructions, PROFANITY_FILTER, "Care Instructions");
+
+        // 5. SYNTAX: Regex Pattern Matching
         DomainGuard.matches(instructions, VALID_CONTENT_PATTERN, "Care Instructions");
 
-        // 5. Semantic Style Consistency (Bullets/Numbering)
+        // 6. SEMANTICS: Style Consistency
         validateSemantics(instructions);
     }
 
-    /**
-     * Ensures all lines follow the same prefix style established in line 1.
-     */
     private static void validateSemantics(String text) {
         String[] lines = text.split("\\R");
         if (lines.length == 0) return;
 
-        // Determine the style from line 1
         Pattern style = Stream.of(HYPHEN_PREFIX, ASTERISK_PREFIX, BULLET_DOT_PREFIX, NUMBER_PREFIX)
                 .filter(p -> p.matcher(lines[0].strip()).find())
                 .findFirst()
@@ -78,7 +74,6 @@ public record CareInstruction(String instructions) {
                         "SEMANTICS"
                 ));
 
-        // Ensure subsequent lines follow the same style
         for (int i = 1; i < lines.length; i++) {
             String line = lines[i].strip();
             if (!line.isEmpty()) {
@@ -91,10 +86,6 @@ public record CareInstruction(String instructions) {
         }
     }
 
-
-    /**
-     * Domain logic check for existence.
-     */
     public boolean isNone() {
         return this.equals(NONE);
     }

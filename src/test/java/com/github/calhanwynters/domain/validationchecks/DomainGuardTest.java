@@ -6,6 +6,7 @@ import org.junit.jupiter.api.*;
 import java.math.BigDecimal;
 import java.time.*;
 import java.util.*;
+import java.util.function.Predicate;
 
 import static org.assertj.core.api.Assertions.*;
 
@@ -130,6 +131,43 @@ class DomainGuardTest {
             Instant nearPast = NOW.minusMillis(400);
             assertThat(DomainGuard.inFuture(nearPast, "startDate", FIXED_CLOCK))
                     .isEqualTo(nearPast);
+        }
+    }
+
+    @Nested
+    @DisplayName("Lexical Guards")
+    class LexicalGuards {
+
+        @Test
+        @DisplayName("inAllowedList should permit whitelisted words")
+        void inAllowedListValid() {
+            Set<String> roles = Set.of("ADMIN", "USER", "GUEST");
+            assertThat(DomainGuard.inAllowedList("  USER  ", roles, "role")).isEqualTo("USER");
+        }
+
+        @Test
+        @DisplayName("inAllowedList should reject non-whitelisted words")
+        void inAllowedListInvalid() {
+            Set<String> roles = Set.of("ADMIN", "USER");
+            assertThatThrownBy(() -> DomainGuard.inAllowedList("SUPER_ADMIN", roles, "role"))
+                    .isInstanceOf(DomainRuleViolationException.class)
+                    .satisfies(ex -> {
+                        var e = (DomainRuleViolationException) ex;
+                        // AssertJ unwrap logic:
+                        assertThat(e.getErrorCode()).hasValue("VAL-020");
+                        assertThat(e.getRuleName()).hasValue("LEXICAL_CONTENT");
+                    });
+        }
+
+
+        @Test
+        @DisplayName("noProfanity should reject based on predicate")
+        void noProfanityCheck() {
+            Predicate<String> filter = s -> s.toLowerCase().contains("badword");
+
+            assertThatThrownBy(() -> DomainGuard.noProfanity("That is a badword!", filter, "comment"))
+                    .isInstanceOf(DomainRuleViolationException.class)
+                    .hasMessageContaining("prohibited language");
         }
     }
 }

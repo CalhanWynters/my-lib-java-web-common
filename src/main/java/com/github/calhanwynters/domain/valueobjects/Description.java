@@ -1,8 +1,7 @@
 package com.github.calhanwynters.domain.valueobjects;
 
 import com.github.calhanwynters.domain.validationchecks.DomainGuard;
-
-import java.util.Set;
+import java.util.function.Predicate;
 import java.util.regex.Pattern;
 
 /**
@@ -15,50 +14,50 @@ public record Description(String text) {
     private static final int MAX_LENGTH = 2000;
     private static final int DOS_SAFETY_BUFFER = MAX_LENGTH * 2;
 
+    // Syntax: Structural Whitelist
     private static final Pattern ALLOWED_CHARS_PATTERN =
             Pattern.compile("^[a-zA-Z0-9 .,:;!\\-?\\n*•()\\[\\]]+$");
 
-    private static final Set<String> FORBIDDEN_WORDS = Set.of("forbiddenword1", "forbiddenword2");
+    // Lexical: Content Integrity
+    private static final Predicate<String> PROFANITY_FILTER = text ->
+            text.toLowerCase().contains("forbiddenword1") || text.toLowerCase().contains("forbiddenword2");
 
-    public static Description from(String text) {
-        return new Description(text);
-    }
-
+    /**
+     * Compact Constructor enforcing hierarchical domain guards.
+     */
     public Description {
-        // 1. Existence & Initial Content
+        // 1. EXISTENCE
         DomainGuard.notBlank(text, "Description");
 
-        // 2. Pre-normalization Security Buffer (DoS Mitigation)
+        // 2. DOS MITIGATION & NORMALIZATION
         DomainGuard.ensure(text.length() <= DOS_SAFETY_BUFFER,
-                "Input raw data exceeds safety buffer limits.", "VAL-DESC-001", "SECURITY");
+                "Input raw data exceeds safety buffer limits.", "VAL-014", "DOS_PREVENTION");
 
-        // 3. Normalization
         String normalized = text.strip()
                 .replaceAll("[ \\t\\x0B\\f\\r]+", " ")
                 .replaceAll("(?m)^ +| +$", "");
 
-        // 4. Lexical Content (Injection Prevention)
+        // 3. SIZE
+        DomainGuard.lengthBetween(normalized, MIN_LENGTH, MAX_LENGTH, "Description");
+
+        // 4. LEXICAL: Content Moderation (Standardized)
+        DomainGuard.noProfanity(normalized, PROFANITY_FILTER, "Description");
+
+        // 5. SYNTAX: Pattern Matching
         DomainGuard.matches(normalized, ALLOWED_CHARS_PATTERN, "Description");
 
-        // 5. Size Validation
-        // This utilizes lengthBetween which returns the stripped string and checks MIN/MAX
-        normalized = DomainGuard.lengthBetween(normalized, MIN_LENGTH, MAX_LENGTH, "Description");
-
-        // 6. Semantics (Forbidden Words)
-        String lowerNormalized = normalized.toLowerCase();
-        boolean hasForbidden = FORBIDDEN_WORDS.stream().anyMatch(lowerNormalized::contains);
-        DomainGuard.ensure(!hasForbidden,
-                "Description violates content security policies.", "VAL-DESC-002", "CONTENT_MODERATION");
-
-        // 7. Canonical Assignment
+        // 6. CANONICAL ASSIGNMENT
         text = normalized;
+    }
+
+    public static Description from(String text) {
+        return new Description(text);
     }
 
     public Description truncate(int maxLength) {
         if (text.length() <= maxLength) {
             return this;
         }
-        // Use DomainGuard to ensure the maxLength passed into the behavior is valid
         DomainGuard.positive(maxLength, "Truncation Length");
 
         String truncated = text.substring(0, Math.max(0, maxLength - 3)) + "...";
