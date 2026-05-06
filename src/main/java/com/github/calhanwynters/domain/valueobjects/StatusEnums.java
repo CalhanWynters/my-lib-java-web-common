@@ -1,9 +1,9 @@
 package com.github.calhanwynters.domain.valueobjects;
 
+import com.github.calhanwynters.domain.validationchecks.AllowedList;
 import com.github.calhanwynters.domain.validationchecks.DomainGuard;
 
 import java.util.Arrays;
-import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -16,9 +16,14 @@ public enum StatusEnums {
     INACTIVE,
     DISCONTINUED;
 
-    private static final Set<String> VALID_NAMES = Arrays.stream(StatusEnums.values())
-            .map(Enum::name)
-            .collect(Collectors.toUnmodifiableSet());
+    /**
+     * Fix: Wrap the Set in an AllowedList to match DomainGuard's lexical signature.
+     */
+    private static final AllowedList ALLOWED_STATUSES = new AllowedList(
+            Arrays.stream(values())
+                    .map(Enum::name)
+                    .collect(Collectors.toSet())
+    );
 
     /**
      * Safe parser for external inputs using DomainGuard.
@@ -27,7 +32,7 @@ public enum StatusEnums {
         // 1. Existence and initial content (Throws VAL-010)
         DomainGuard.notBlank(value, "Status");
 
-        // 2. Normalization & DoS Mitigation (Throws VAL-014)
+        // 2. Normalization & DoS Mitigation
         String normalized = value.strip().toUpperCase();
         DomainGuard.ensure(
                 normalized.length() <= 20,
@@ -35,27 +40,25 @@ public enum StatusEnums {
                 "VAL-014", "DOS_PREVENTION"
         );
 
-        // 3. Whitelist Validation (Throws VAL-004)
-        DomainGuard.ensure(
-                VALID_NAMES.contains(normalized),
-                "Invalid Status: '%s'. Allowed values: %s".formatted(normalized, VALID_NAMES),
-                "VAL-004", "SYNTAX"
-        );
+        // 3. Lexical Validation (Throws VAL-020: LEXICAL_CONTENT)
+        // Standardizing to use the library's built-in whitelist check
+        DomainGuard.inAllowedList(normalized, ALLOWED_STATUSES, "Status");
 
         return StatusEnums.valueOf(normalized);
     }
 
     /**
-     * Semantic state transition logic.
+     * Semantic state transition logic with Domain Guarding.
      */
     public boolean canTransitionTo(StatusEnums nextStatus) {
-        // Throws VAL-001
+        // 1. Existence Check
         DomainGuard.notNull(nextStatus, "Target Status");
 
+        // 2. Business Rule: Logical State Machine
         return switch (this) {
-            case DRAFT -> true;
-            case ACTIVE -> nextStatus != DRAFT;
-            case INACTIVE, DISCONTINUED -> nextStatus == ACTIVE;
+            case DRAFT -> true; // Drafts can move anywhere
+            case ACTIVE -> nextStatus != DRAFT; // Active items can't go back to Draft
+            case INACTIVE, DISCONTINUED -> nextStatus == ACTIVE; // Must go back to Active first
         };
     }
 }

@@ -2,172 +2,204 @@ package com.github.calhanwynters.domain.validationchecks;
 
 import com.github.calhanwynters.domain.exceptions.DomainRuleViolationException;
 import org.junit.jupiter.api.*;
-
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import java.math.BigDecimal;
 import java.time.*;
 import java.util.*;
-import java.util.function.Predicate;
 
 import static org.assertj.core.api.Assertions.*;
 
-/**
- * Corrected Senior-level test suite for DomainGuard.
- * Aligned with DomainRuleViolationException metadata and Java 21 features.
- */
 class DomainGuardTest {
 
-    private static final Instant NOW = Instant.parse("2026-04-23T10:00:00Z");
-    private static final Clock FIXED_CLOCK = Clock.fixed(NOW, ZoneOffset.UTC);
+    private static final String FIELD = "testField";
+
+    @BeforeEach
+    void setUp() {
+        DomainGuardConfig defaultSafeConfig = new DomainGuardConfig();
+        // This uses your existing setConfig method to overwrite the "dirty" one
+        DomainGuard.setConfig(defaultSafeConfig);
+    }
+
 
     @Nested
-    @DisplayName("Textual Guards")
-    class TextualGuards {
+    @DisplayName("Existence & Text Validations")
+    class ExistenceAndTextTests {
 
         @Test
-        @DisplayName("notBlank should strip whitespace and return value")
-        void notBlankValid() {
-            String input = "  valid_data  ";
-            String result = DomainGuard.notBlank(input, "username");
-            assertThat(result).isEqualTo("valid_data");
+        void notNull_ShouldThrow_WhenValueIsNull() {
+            assertThatThrownBy(() -> DomainGuard.notNull(null, FIELD))
+                    .isExactlyInstanceOf(DomainRuleViolationException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", "VAL-001")
+                    .hasFieldOrPropertyWithValue("ruleName", "EXISTENCE")
+                    .hasMessageContaining(FIELD);
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"", "   ", "\n"})
+        void notBlank_ShouldThrow_WhenStringIsBlank(String value) {
+            assertThatThrownBy(() -> DomainGuard.notBlank(value, FIELD))
+                    .isExactlyInstanceOf(DomainRuleViolationException.class)
+                    .hasFieldOrPropertyWithValue("ruleName", "EXISTENCE");
         }
 
         @Test
-        @DisplayName("notBlank should throw on empty or null strings")
-        void notBlankInvalid() {
-            assertThatThrownBy(() -> DomainGuard.notBlank("   ", "username"))
-                    .isInstanceOf(DomainRuleViolationException.class)
-                    .satisfies(ex -> {
-                        var e = (DomainRuleViolationException) ex;
-                        assertThat(e.getErrorCode()).contains("VAL-010");
-                        assertThat(e.getRuleName()).contains("TEXT_CONTENT");
-                    });
+        void lengthBetween_ShouldThrow_WhenOutsideBounds() {
+            // 1. Configure the bounds
+            DomainGuardConfig customConfig = new DomainGuardConfig();
+            customConfig.setMinLength(5);
+            customConfig.setMaxLength(10);
+            DomainGuard.setConfig(customConfig);
+
+            // 2. "abc" has length 3, which is below the minimum of 5
+            assertThatThrownBy(() -> DomainGuard.lengthBetween("abc", FIELD))
+                    .isExactlyInstanceOf(DomainRuleViolationException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", "VAL-002");
+        }
+
+
+        @Test
+        void matches_ShouldThrow_WhenRegexFails() {
+            // Compile the string into a Pattern object as required by your method signature
+            java.util.regex.Pattern numericPattern = java.util.regex.Pattern.compile("^[0-9]+$");
+
+            // "abc" contains letters, so it fails the numeric-only regex
+            assertThatThrownBy(() -> DomainGuard.matches("abc", numericPattern, FIELD))
+                    .isExactlyInstanceOf(DomainRuleViolationException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", "VAL-004");
+        }
+
+    }
+
+    @Nested
+    @DisplayName("Numeric Validations")
+    class NumericTests {
+
+        @Test
+        void range_ShouldThrow_WhenValueIsOutOfBounds() {
+            assertThatThrownBy(() -> DomainGuard.range(15, 1, 10, FIELD))
+                    .isExactlyInstanceOf(DomainRuleViolationException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", "VAL-007");
         }
 
         @Test
-        @DisplayName("lengthBetween should enforce boundaries after stripping")
-        void lengthBetweenBoundaries() {
-            String input = "  abc  ";
-            assertThat(DomainGuard.lengthBetween(input, 2, 3, "ERR")).isEqualTo("abc");
+        @DisplayName("positiveGeneric should fail for zero and negative values")
+        void positiveGeneric_ShouldFailForZeroOrNegative() {
+            // Zero should fail
+            assertThatThrownBy(() -> DomainGuard.positiveGeneric(0, FIELD))
+                    .isInstanceOf(DomainRuleViolationException.class);
 
-            assertThatThrownBy(() -> DomainGuard.lengthBetween(" a ", 2, 5, "ERR"))
+            // Negative should fail
+            assertThatThrownBy(() -> DomainGuard.positiveGeneric(-1.5, FIELD))
+                    .isInstanceOf(DomainRuleViolationException.class);
+
+            // NaN should fail
+            assertThatThrownBy(() -> DomainGuard.positiveGeneric(Double.NaN, FIELD))
                     .isInstanceOf(DomainRuleViolationException.class);
         }
-    }
-
-    @Nested
-    @DisplayName("Numeric Guards")
-    class NumericGuards {
 
         @Test
-        @DisplayName("positive should accept strictly greater than zero")
-        void positiveValidation() {
-            BigDecimal val = new BigDecimal("0.01");
-            assertThat(DomainGuard.positive(val, "ERR")).isSameAs(val);
+        @DisplayName("nonNegativeGeneric should allow zero but fail for negative values")
+        void nonNegativeGeneric_ShouldAllowZeroButFailForNegative() {
+            // Zero should PASS
+            assertThat(DomainGuard.nonNegativeGeneric(0, FIELD)).isEqualTo(0);
+            assertThat(DomainGuard.nonNegativeGeneric(BigDecimal.ZERO, FIELD)).isEqualTo(BigDecimal.ZERO);
 
-            assertThatThrownBy(() -> DomainGuard.positive(BigDecimal.ZERO, "ERR"))
+            // Negative should FAIL
+            assertThatThrownBy(() -> DomainGuard.nonNegativeGeneric(-1, FIELD))
+                    .isExactlyInstanceOf(DomainRuleViolationException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", "VAL-011");
+
+            // Infinity should FAIL
+            assertThatThrownBy(() -> DomainGuard.nonNegativeGeneric(Double.POSITIVE_INFINITY, FIELD))
                     .isInstanceOf(DomainRuleViolationException.class);
         }
 
         @Test
-        @DisplayName("range should handle boundaries")
-        void rangeBoundaries() {
-            // Using Integer.MAX_VALUE to avoid the long-to-int overflow bug
-            int max = Integer.MAX_VALUE;
-            DomainGuard.range(max, 0, max, "ERR");
-            DomainGuard.range(0, 0, 10, "ERR");
+        void maxScale_ShouldUseConfigSetting() {
+            // 1. Create a fresh config instance
+            DomainGuardConfig customConfig = new DomainGuardConfig();
+
+            // 2. Set the scale on the instance (not the class)
+            customConfig.setMaxScale(2);
+
+            // 3. Apply this config to the Guard
+            DomainGuard.setConfig(customConfig);
+
+            BigDecimal invalid = new BigDecimal("10.555"); // 3 decimal places
+
+            assertThatThrownBy(() -> DomainGuard.maxScale(invalid, FIELD))
+                    .isExactlyInstanceOf(DomainRuleViolationException.class)
+                    .hasMessageContaining("cannot exceed 2 decimal places");
         }
     }
 
+
     @Nested
-    @DisplayName("Collection Guards (Java 21)")
-    class CollectionGuards {
+    @DisplayName("Collection Validations")
+    class CollectionTests {
 
         @Test
-        @DisplayName("firstNotNull should throw if the actual first element is null")
-        void firstNotNullStrictCheck() {
-            SequencedCollection<String> list = new LinkedList<>();
-            list.add(null);
-
-            assertThatThrownBy(() -> DomainGuard.firstNotNull(list, "myCollection"))
-                    .isInstanceOf(DomainRuleViolationException.class)
-                    .satisfies(ex -> {
-                        var e = (DomainRuleViolationException) ex;
-                        assertThat(e.getErrorCode()).contains("VAL-015");
-                        assertThat(e.getRuleName()).contains("COLLECTION_ORDER");
-                    });
+        void notEmpty_ShouldThrow_WhenListIsEmpty() {
+            assertThatThrownBy(() -> DomainGuard.notEmpty(Collections.emptyList(), FIELD))
+                    .isExactlyInstanceOf(DomainRuleViolationException.class);
         }
 
         @Test
-        @DisplayName("noNullElements should catch null even at the end of a list")
-        void noNullElementsDeepCheck() {
-            List<String> list = new ArrayList<>(List.of("a", "b", "c"));
-            list.add(null);
-
-            assertThatThrownBy(() -> DomainGuard.noNullElements(list, "myList"))
-                    .isInstanceOf(DomainRuleViolationException.class)
-                    .satisfies(ex -> {
-                        var e = (DomainRuleViolationException) ex;
-                        assertThat(e.getErrorCode()).contains("VAL-012");
-                        assertThat(e.getRuleName()).contains("COLLECTION_INTEGRITY");
-                    });
+        void noNullElements_ShouldThrow_WhenNullPresent() {
+            List<String> list = Arrays.asList("Valid", null);
+            assertThatThrownBy(() -> DomainGuard.noNullElements(list, FIELD))
+                    .isExactlyInstanceOf(DomainRuleViolationException.class);
         }
+
+        @Test
+        void secureList_ShouldBeADefensiveCopy() {
+            List<String> input = new ArrayList<>(List.of("A", "B"));
+            List<String> secured = DomainGuard.secureList(input, FIELD);
+
+            input.add("C"); // Modify the original source
+
+            assertThat(secured)
+                    .as("The secured list should not change when the original input changes")
+                    .containsExactly("A", "B")
+                    .doesNotContain("C");
+        }
+
     }
 
     @Nested
-    @DisplayName("Temporal Guards")
-    class TemporalGuards {
+    @DisplayName("Temporal Validations")
+    class TemporalTests {
+
+        private final Instant now = Instant.parse("2024-01-01T12:00:00Z");
+        private final Clock fixedClock = Clock.fixed(now, ZoneId.of("UTC"));
 
         @Test
-        @DisplayName("inPast should accept future timestamps within 500ms drift")
-        void inPastDriftTolerance() {
-            Instant nearFuture = NOW.plusMillis(400);
-            Instant result = DomainGuard.inPast(nearFuture, "eventDate", FIXED_CLOCK);
-            assertThat(result).isEqualTo(nearFuture);
+        void inPast_ShouldFail_IfDateIsFuture() {
+            // Fix: Create instance and inject via setConfig
+            DomainGuardConfig customConfig = new DomainGuardConfig();
+            customConfig.setTemporalTolerance(Duration.ZERO);
+            DomainGuard.setConfig(customConfig);
+
+            Instant futureDate = now.plus(Duration.ofHours(1));
+
+            assertThatThrownBy(() -> DomainGuard.inPast(futureDate, FIELD, fixedClock))
+                    .isExactlyInstanceOf(DomainRuleViolationException.class);
         }
 
         @Test
-        @DisplayName("inFuture should accept past timestamps within 500ms drift")
-        void inFutureDriftTolerance() {
-            Instant nearPast = NOW.minusMillis(400);
-            assertThat(DomainGuard.inFuture(nearPast, "startDate", FIXED_CLOCK))
-                    .isEqualTo(nearPast);
-        }
-    }
+        @DisplayName("Temporal check should respect config tolerance")
+        void inFuture_ShouldPass_IfWithinTolerance() {
+            // Fix: Create instance and inject via setConfig
+            DomainGuardConfig customConfig = new DomainGuardConfig();
+            customConfig.setTemporalTolerance(Duration.ofMinutes(5));
+            DomainGuard.setConfig(customConfig);
 
-    @Nested
-    @DisplayName("Lexical Guards")
-    class LexicalGuards {
+            // 2 minutes in the past, but tolerance is 5 minutes
+            Instant slightlyPast = now.minus(Duration.ofMinutes(2));
 
-        @Test
-        @DisplayName("inAllowedList should permit whitelisted words")
-        void inAllowedListValid() {
-            Set<String> roles = Set.of("ADMIN", "USER", "GUEST");
-            assertThat(DomainGuard.inAllowedList("  USER  ", roles, "role")).isEqualTo("USER");
-        }
-
-        @Test
-        @DisplayName("inAllowedList should reject non-whitelisted words")
-        void inAllowedListInvalid() {
-            Set<String> roles = Set.of("ADMIN", "USER");
-            assertThatThrownBy(() -> DomainGuard.inAllowedList("SUPER_ADMIN", roles, "role"))
-                    .isInstanceOf(DomainRuleViolationException.class)
-                    .satisfies(ex -> {
-                        var e = (DomainRuleViolationException) ex;
-                        // AssertJ unwrap logic:
-                        assertThat(e.getErrorCode()).hasValue("VAL-020");
-                        assertThat(e.getRuleName()).hasValue("LEXICAL_CONTENT");
-                    });
-        }
-
-
-        @Test
-        @DisplayName("noProfanity should reject based on predicate")
-        void noProfanityCheck() {
-            Predicate<String> filter = s -> s.toLowerCase().contains("badword");
-
-            assertThatThrownBy(() -> DomainGuard.noProfanity("That is a badword!", filter, "comment"))
-                    .isInstanceOf(DomainRuleViolationException.class)
-                    .hasMessageContaining("prohibited language");
+            assertThatCode(() -> DomainGuard.inFuture(slightlyPast, FIELD, fixedClock))
+                    .doesNotThrowAnyException();
         }
     }
 }

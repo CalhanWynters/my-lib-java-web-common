@@ -8,6 +8,20 @@ public record LifecycleState(boolean archived, boolean softDeleted) {
     // Records are non-null by nature for primitives,
     // but we can add logic here if needed.
 
+    public LifecycleState {
+        // Semantic Rule: An item shouldn't usually be 'archived' and 'deleted' simultaneously.
+        // This keeps your search filters (isActive) predictable.
+        com.github.calhanwynters.domain.validationchecks.DomainGuard.ensure(
+                !(archived && softDeleted),
+                "An entity cannot be both archived and soft-deleted.",
+                "VAL-011", "SEMANTIC_CONFLICT"
+        );
+    }
+
+    public static LifecycleState active() {
+        return new LifecycleState(false, false);
+    }
+
     /**
      * Wither for Archived status.
      * Returns a new instance with the updated flag.

@@ -2,16 +2,26 @@ package com.github.calhanwynters.domain.validationchecks;
 
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.Optional;
 import java.util.Set;
 
 public record ProfanityList(Set<String> prohibitedWords) {
-
     public ProfanityList {
-        // Ensure the set is not null and create a defensive copy
-        if (prohibitedWords == null) {
-            throw new IllegalArgumentException("Prohibited words cannot be null.");
-        }
-        prohibitedWords = Set.copyOf(prohibitedWords); // Create an unmodifiable set
+        if (prohibitedWords == null) throw new IllegalArgumentException("Prohibited words cannot be null.");
+        prohibitedWords = Set.copyOf(prohibitedWords);
+    }
+
+    /**
+     * Searches for any prohibited word within the given text.
+     * Returns an Optional containing the first word found, or empty if clean.
+     */
+    public Optional<String> findFirstIn(String text) {
+        if (text == null || text.isBlank()) return Optional.empty();
+        String normalized = text.toLowerCase();
+
+        return prohibitedWords.stream()
+                .filter(normalized::contains)
+                .findFirst();
     }
 
     // Method to add a prohibited word; returns a new ProfanityList instance

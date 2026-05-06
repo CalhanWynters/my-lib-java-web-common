@@ -20,16 +20,13 @@ public record Version(int value) {
         DomainGuard.notBlank(versionString, "Version String");
 
         try {
-            String majorPart = versionString.split("\\.")[0];
-            int major = Integer.parseInt(majorPart);
+            // Strip and parse major version
+            int major = Integer.parseInt(versionString.split("\\.")[0].strip());
             return new Version(major);
         } catch (Exception e) {
-            DomainGuard.ensure(
-                    false,
-                    "Invalid version format: " + versionString,
-                    "VAL-004", "SYNTAX"
-            );
-            return null; // Unreachable
+            // Aligns with your standardized VAL-004 error reporting
+            DomainGuard.ensure(false, "Malformed version string.", "VAL-004", "SYNTAX");
+            return null;
         }
     }
 

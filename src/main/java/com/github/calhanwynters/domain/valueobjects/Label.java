@@ -32,27 +32,28 @@ public record Label(String value) {
      * Compact constructor using DomainGuard for invariant enforcement.
      */
     public Label {
-        // 1. Existence & Initial Content Check (Throws VAL-010)
+        // 1. Existence Check
         DomainGuard.notBlank(value, "Label Value");
 
-        // 2. Pre-Check Size (DoS Mitigation for Regex)
+        // 2. DOS Mitigation (Check raw length before heavy Regex)
         DomainGuard.ensure(
                 value.length() <= SAFETY_BUFFER,
                 "Input raw data exceeds safety buffer limits.",
                 "VAL-014", "DOS_PREVENTION"
         );
 
-        // 3. Normalization (Internal spacing consolidation)
+        // 3. Normalization
         String normalized = value.strip().replaceAll("\\s{2,}", " ");
 
-        // 4. Size & Boundary (Throws VAL-002)
-        // DomainGuard.lengthBetween already calls notBlank internally.
-        normalized = DomainGuard.lengthBetween(normalized, MIN_LENGTH, MAX_LENGTH, "Label Value");
+        // 4. Size & Boundary
+        // Logic: Uses your specific MIN (1) and MAX (20) constants
+        DomainGuard.lengthBetween(normalized, MIN_LENGTH, MAX_LENGTH, "Label Value");
 
-        // 5. Lexical Content (Throws VAL-004)
+        // 5. Lexical Content
         DomainGuard.matches(normalized, ALLOWED_CHARS_PATTERN, "Label Value");
 
-        // 6. Assignment to final record field
+        // 6. Canonical Assignment
         value = normalized;
     }
+
 }

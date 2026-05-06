@@ -14,8 +14,11 @@ public record Money(BigDecimal amount, Currency currency, int precision, Roundin
         DomainGuard.notNull(amount, "Amount");
         DomainGuard.notNull(currency, "Currency");
         DomainGuard.notNull(roundingMode, "Rounding Mode");
-        DomainGuard.nonNegative(BigDecimal.valueOf(precision), "Precision");
-        // Ensure the amount is scaled immediately upon construction for consistency
+
+        // Use positiveGeneric for the 'int' precision
+        DomainGuard.positiveGeneric(precision, "Precision");
+
+        // Scale immediately to ensure the Record's state is canonical
         amount = amount.setScale(precision, roundingMode);
     }
 
@@ -59,30 +62,25 @@ public record Money(BigDecimal amount, Currency currency, int precision, Roundin
     }
 
     public Money multiply(int multiplier) {
-        // --- REVISION 1: Changed "positive" to "nonNegative" to allow multiplying by zero ---
-        DomainGuard.nonNegative(BigDecimal.valueOf(multiplier), "Int-based Multiplier must be non-negative.");
+        // ✅ Fix: Use the new generic guard to allow 0 without manual +1 hacks
+        DomainGuard.nonNegativeGeneric(multiplier, "Multiplier");
+
         BigDecimal result = this.amount.multiply(BigDecimal.valueOf(multiplier));
         return new Money(result, this.currency, this.precision, this.roundingMode);
     }
 
-    /**
-     * Overloaded method to multiply the money amount by a BigDecimal factor (fractional quantities).
-     * The result is scaled and rounded according to the Money object's precision rules.
-     * Decided to keep int based multiplying to acts as a safeguard against corrupted input data.
-     */
     public Money multiply(BigDecimal factor) {
-        DomainGuard.nonNegative(factor, "Fraction-based Multiplying factor must be non-negative.");
-        // The result is automatically scaled/rounded in the compact constructor
+        // ✅ Fix: Standardized to use the same generic logic for consistency
+        DomainGuard.nonNegativeGeneric(factor, "Multiplying factor");
+
         BigDecimal result = this.amount.multiply(factor);
         return new Money(result, this.currency, this.precision, this.roundingMode);
     }
 
     public Money divide(int divisor) {
-        DomainGuard.positive(divisor, "Divisor must be positive.");
-
-        // --- REVISION 2: Use BigDecimal.valueOf for cleaner code ---
+        // Use positiveGeneric to ensure divisor is > 0
+        DomainGuard.positiveGeneric(divisor, "Divisor");
         BigDecimal result = this.amount.divide(BigDecimal.valueOf(divisor), this.precision, this.roundingMode);
-
         return new Money(result, this.currency, this.precision, this.roundingMode);
     }
 

@@ -31,16 +31,20 @@ public abstract class BaseAggregateRoot<
     protected OffsetDateTime lastSyncedAt;
 
     protected BaseAggregateRoot(ID id, UUID_TYPE uuId, BUS_UUID businessUuId,
-                                AuditMetadata auditMetadata, Long optLockVer,
-                                Integer schemaVer, OffsetDateTime lastSyncedAt) {
+                                AuditMetadata auditMetadata, LifecycleState lifecycleState,
+                                Long optLockVer, Integer schemaVer, OffsetDateTime lastSyncedAt) {
+        // Standardizing on the existence check from your library
         this.id = id;
-        this.uuId = uuId;
-        this.businessUuId = businessUuId;
-        this.auditMetadata = auditMetadata;
+        this.uuId = DomainGuard.notNull(uuId, "Aggregate UUID");
+        this.businessUuId = DomainGuard.notNull(businessUuId, "Business Identity");
+        this.auditMetadata = DomainGuard.notNull(auditMetadata, "Audit Metadata");
+        this.lifecycleState = (lifecycleState != null) ? lifecycleState : LifecycleState.active();
+
         this.optLockVer = optLockVer;
         this.schemaVersion = (schemaVer != null) ? schemaVer : 1;
-        this.lastSyncedAt = lastSyncedAt;
+        this.lastSyncedAt = (lastSyncedAt != null) ? lastSyncedAt : OffsetDateTime.now(ZoneOffset.UTC);
     }
+
 
     protected BaseAggregateRoot() {}
 
@@ -118,8 +122,10 @@ public abstract class BaseAggregateRoot<
     }
 
     protected void recordSync() {
-        this.lastSyncedAt = OffsetDateTime.now(ZoneOffset.UTC);
+        // Truncate to MICROS to match your AuditMetadata standard
+        this.lastSyncedAt = OffsetDateTime.now(ZoneOffset.UTC).truncatedTo(java.time.temporal.ChronoUnit.MICROS);
     }
+
 
     public boolean isSyncPending() {
         if (lastSyncedAt == null) return true;

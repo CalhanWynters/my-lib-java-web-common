@@ -1,7 +1,6 @@
 package com.github.calhanwynters.domain.valueobjects;
 
 import com.github.calhanwynters.domain.validationchecks.DomainGuard;
-import java.util.function.Predicate;
 import java.util.regex.Pattern;
 
 /**
@@ -18,13 +17,6 @@ public record Description(String text) {
     private static final Pattern ALLOWED_CHARS_PATTERN =
             Pattern.compile("^[a-zA-Z0-9 .,:;!\\-?\\n*•()\\[\\]]+$");
 
-    // Lexical: Content Integrity
-    private static final Predicate<String> PROFANITY_FILTER = text ->
-            text.toLowerCase().contains("forbiddenword1") || text.toLowerCase().contains("forbiddenword2");
-
-    /**
-     * Compact Constructor enforcing hierarchical domain guards.
-     */
     public Description {
         // 1. EXISTENCE
         DomainGuard.notBlank(text, "Description");
@@ -38,10 +30,16 @@ public record Description(String text) {
                 .replaceAll("(?m)^ +| +$", "");
 
         // 3. SIZE
-        DomainGuard.lengthBetween(normalized, MIN_LENGTH, MAX_LENGTH, "Description");
+        // Note: Using explicit bounds check since DomainGuard uses static config
+        if (normalized.length() < MIN_LENGTH || normalized.length() > MAX_LENGTH) {
+            throw new com.github.calhanwynters.domain.exceptions.DomainRuleViolationException(
+                    "Description must be between %d and %d characters.".formatted(MIN_LENGTH, MAX_LENGTH),
+                    "VAL-002", "SIZE");
+        }
 
-        // 4. LEXICAL: Content Moderation (Standardized)
-        DomainGuard.noProfanity(normalized, PROFANITY_FILTER, "Description");
+        // 4. LEXICAL: Content Moderation
+        // Now standardized to use the DomainGuard's internal config list
+        DomainGuard.noProfanity(normalized, "Description");
 
         // 5. SYNTAX: Pattern Matching
         DomainGuard.matches(normalized, ALLOWED_CHARS_PATTERN, "Description");
@@ -55,10 +53,12 @@ public record Description(String text) {
     }
 
     public Description truncate(int maxLength) {
+        // Use positiveGeneric for the 'int' parameter
+        DomainGuard.positiveGeneric(maxLength, "Truncation Length");
+
         if (text.length() <= maxLength) {
             return this;
         }
-        DomainGuard.positive(maxLength, "Truncation Length");
 
         String truncated = text.substring(0, Math.max(0, maxLength - 3)) + "...";
         return new Description(truncated);

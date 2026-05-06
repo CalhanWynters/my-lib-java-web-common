@@ -61,15 +61,17 @@ public record Dimensions(BigDecimal length, BigDecimal width, BigDecimal height,
         DomainGuard.notNull(height, "Height");
         DomainGuard.notNull(sizeUnit, "Dimension Unit");
 
-        // 2. SEMANTICS: Positive Range (VAL-011)
-        DomainGuard.positive(length, "Length");
-        DomainGuard.positive(width, "Width");
-        DomainGuard.positive(height, "Height");
+        // 2. SEMANTICS: Strict Positivity
+        // positiveGeneric allows 0.0000000001; your 'positive' method (MIN 1) does not.
+        DomainGuard.positiveGeneric(length, "Length");
+        DomainGuard.positiveGeneric(width, "Width");
+        DomainGuard.positiveGeneric(height, "Height");
 
-        // 3. SEMANTICS: Upper Boundary Range (VAL-007)
-        validateRange(length, "Length");
-        validateRange(width, "Width");
-        validateRange(height, "Height");
+        // 3. SEMANTICS: Upper Boundary
+        // Using your existing 'range' logic (min=null, max=ABSOLUTE_MAX_LIMIT)
+        DomainGuard.range(length, null, ABSOLUTE_MAX_LIMIT, "Length");
+        DomainGuard.range(width, null, ABSOLUTE_MAX_LIMIT, "Width");
+        DomainGuard.range(height, null, ABSOLUTE_MAX_LIMIT, "Height");
     }
 
     private void validateRange(BigDecimal value, String name) {

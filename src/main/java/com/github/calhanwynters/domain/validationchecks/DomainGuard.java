@@ -45,6 +45,17 @@ public final class DomainGuard {
         return cleaned;
     }
 
+    public static String lengthBetween(String value, int min, int max, String fieldName) {
+        String cleaned = notBlank(value, fieldName);
+        int len = cleaned.length();
+        if (len < min || len > max) {
+            fail("%s length must be [%d..%d] (was: %d)."
+                    .formatted(fieldName, min, max, len), "VAL-002", "SIZE");
+        }
+        return cleaned;
+    }
+
+
     public static String matches(String value, Pattern pattern, String fieldName) {
         notNull(pattern, "Pattern");
         String cleaned = notBlank(value, fieldName);
@@ -63,15 +74,13 @@ public final class DomainGuard {
         return cleaned;
     }
 
-    public static String noProfanity(String value, String fieldName, DomainGuardConfig config) {
+    public static String noProfanity(String value, String fieldName) {
         String cleaned = notBlank(value, fieldName);
-        for (String profaneWord : config.getProfanityList().getProhibitedWords()) {
-            if (cleaned.toLowerCase().contains(profaneWord.toLowerCase())) {
-                fail("%s contains inappropriate language: '%s'.".formatted(fieldName, profaneWord), "VAL-021", "PROFANITY");
-            }
-        }
+        config.getProfanityList().findFirstIn(cleaned).ifPresent(word -> fail("%s contains inappropriate language: '%s'.".formatted(fieldName, word),
+                "VAL-021", "PROFANITY"));
         return cleaned;
     }
+
 
     // --- NUMERIC ---
 
@@ -80,6 +89,23 @@ public final class DomainGuard {
         if (value.compareTo(min) < 0 || value.compareTo(max) > 0) {
             fail("%s must be between %s and %s."
                     .formatted(fieldName, min, max), "VAL-007", "RANGE");
+        }
+        return value;
+    }
+
+    public static <T extends Number> T nonNegativeGeneric(T value, String fieldName) {
+        notNull(value, fieldName);
+        boolean isInvalid = switch (value) {
+            case Integer i -> i < 0;
+            case Long l -> l < 0L;
+            case Double d -> Double.isNaN(d) || Double.isInfinite(d) || d < 0.0;
+            case Float f -> Float.isNaN(f) || Float.isInfinite(f) || f < 0.0f;
+            case BigDecimal b -> b.signum() < 0;
+            default -> throw new IllegalArgumentException("Unsupported numeric type: " + value.getClass().getName());
+        };
+
+        if (isInvalid) {
+            fail("%s must be non-negative (received: %s).".formatted(fieldName, value), "VAL-011", "SEMANTICS");
         }
         return value;
     }

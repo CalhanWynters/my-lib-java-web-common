@@ -18,16 +18,13 @@ public record PkId(Long value) {
         // 1. Existence
         DomainGuard.notNull(value, "Primary Key");
 
-        // 2. Positivity & Range Validation (Throws VAL-013)
-        DomainGuard.positive(value, "Primary Key");
+        // 2. Positivity (Handles Long types via the generic switch)
+        DomainGuard.positiveGeneric(value, "Primary Key");
 
-        // 3. Safety Boundary Validation (Throws VAL-007)
-        DomainGuard.ensure(
-                value <= MAX_PK_VALUE,
-                "Primary Key exceeds safety boundary. Potential overflow or injection detected.",
-                "VAL-007", "RANGE"
-        );
+        // 3. Safety Boundary
+        DomainGuard.range(value, null, MAX_PK_VALUE, "Primary Key");
     }
+
 
     /**
      * Factory method for creating an ID from a raw long.

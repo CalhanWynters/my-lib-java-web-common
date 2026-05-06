@@ -3,7 +3,6 @@ package com.github.calhanwynters.domain.valueobjects;
 import com.github.calhanwynters.domain.exceptions.DomainRuleViolationException;
 import com.github.calhanwynters.domain.validationchecks.DomainGuard;
 
-import java.util.function.Predicate;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
@@ -29,10 +28,6 @@ public record CareInstruction(String instructions) {
     private static final Pattern VALID_CONTENT_PATTERN =
             Pattern.compile("^(?U)[\\p{L}\\p{N} °.,:!\\n\\r*•()\\[\\]\\-?]+$");
 
-    // Simple Lexical Filter (Ideally injected via a service, but defined here for invariant safety)
-    private static final Predicate<String> PROFANITY_FILTER =
-            s -> s.toLowerCase().contains("badword"); // Placeholder for your filter logic
-
     /**
      * Compact Constructor enforcing hierarchical domain guards.
      */
@@ -40,29 +35,30 @@ public record CareInstruction(String instructions) {
         // 1. EXISTENCE
         DomainGuard.notBlank(instructions, "Care Instructions");
 
-        // 2. NORMALIZATION (Pre-validation prep)
+        // 2. NORMALIZATION
         instructions = instructions.replace("\r\n", "\n").replace("\r", "\n").strip();
 
         // 3. SIZE & DOS MITIGATION
-        DomainGuard.ensure(
-                instructions.length() <= (MAX_LENGTH * SAFETY_FACTOR),
-                "Input raw data exceeds safety buffer.",
-                "VAL-014", "DOS_PREVENTION"
-        );
-        DomainGuard.lengthBetween(instructions, MIN_LENGTH, MAX_LENGTH, "Care Instructions");
+        // Update lengthBetween to use this object's specific constraints
+        // rather than the global DomainGuardConfig defaults.
+        if (instructions.length() < MIN_LENGTH || instructions.length() > MAX_LENGTH) {
+            throw new DomainRuleViolationException("Length error", "VAL-002", "SIZE");
+        }
 
-        // 4. LEXICAL: Content Integrity (New)
-        DomainGuard.noProfanity(instructions, PROFANITY_FILTER, "Care Instructions");
+        // 4. LEXICAL
+        DomainGuard.noProfanity(instructions, "Care Instructions");
 
-        // 5. SYNTAX: Regex Pattern Matching
+        // 5. SYNTAX
         DomainGuard.matches(instructions, VALID_CONTENT_PATTERN, "Care Instructions");
 
-        // 6. SEMANTICS: Style Consistency
+        // 6. SEMANTICS
         validateSemantics(instructions);
     }
 
+
+
     private static void validateSemantics(String text) {
-        String[] lines = text.split("\\R");
+        String[] lines = text.split("\\n");
         if (lines.length == 0) return;
 
         Pattern style = Stream.of(HYPHEN_PREFIX, ASTERISK_PREFIX, BULLET_DOT_PREFIX, NUMBER_PREFIX)

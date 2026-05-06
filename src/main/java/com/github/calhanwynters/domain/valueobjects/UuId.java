@@ -23,32 +23,26 @@ public record UuId(String value) {
      * Compact Constructor enforcing RFC 9562 UUID standards.
      */
     public UuId {
-        // 1. Existence and Initial Content (Throws VAL-010)
+        // 1. Existence
         DomainGuard.notBlank(value, "UUID");
 
-        // 2. Normalization & Size Boundary (Throws VAL-002)
+        // 2. Normalization
         String normalized = value.strip();
-        DomainGuard.ensure(
-                normalized.length() == UUID_LENGTH,
-                "UUID must be exactly %d characters.".formatted(UUID_LENGTH),
-                "VAL-002", "SIZE"
-        );
 
-        // 3. Syntax & Lexical Content (Throws VAL-004)
+        // 3. Size (VAL-002)
+        // Using the 4-arg overload to enforce the exact 36-char length
+        DomainGuard.lengthBetween(normalized, UUID_LENGTH, UUID_LENGTH, "UUID");
+
+        // 4. Syntax (VAL-004)
         try {
-            // Validates hex characters and structural hyphens via standard parser
             UUID.fromString(normalized);
         } catch (IllegalArgumentException e) {
-            DomainGuard.ensure(
-                    false,
-                    "Invalid UUID syntax or hex encoding detected.",
-                    "VAL-004", "SYNTAX"
-            );
+            DomainGuard.ensure(false, "Invalid UUID format.", "VAL-004", "SYNTAX");
         }
 
-        // 4. Data Assignment
         value = normalized;
     }
+
 
     /**
      * Java 25 Factory Method.
